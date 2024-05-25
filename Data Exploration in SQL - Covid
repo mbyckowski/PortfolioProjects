@@ -1,0 +1,166 @@
+--Data Exploration in SQL - Covid 
+
+--Showcased Skills: CTEs, Joins, Aggregate Functions, Window Functions, Creating Views, Converting Data Types
+
+
+USE [Portfolio Project]
+
+  
+SELECT *
+FROM dbo.CovidDeaths
+WHERE Continent IS NOT NULL 
+ORDER BY 3,4
+
+
+--Selecting starting Data 
+
+  
+SELECT Location, Date, Total_Cases, New_Cases, Total_Deaths, Population
+FROM dbo.CovidDeaths
+WHERE Continent IS NOT NULL
+ORDER BY 1,2
+
+
+--Exploring Total Cases vs Total Deaths
+--Shows the likelihood of dying if you contract covid in your country
+
+  
+SELECT Location, Date, Total_Cases, Total_Deaths, (CAST(Total_Deaths as float)/CAST(Total_Cases as float))*100 as DeathPercentage
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%'
+WHERE Continent IS NOT NULL 
+ORDER BY 1,2
+
+
+--Exploring Total Cases vs Population 
+--Shows what percentage of population tested positive for Covid over time
+
+  
+SELECT Location, Date, Population, Total_Cases, (Total_Cases/Population)*100 as PercentofPopulationInfected
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%'
+WHERE Continent IS NOT NULL
+ORDER BY 1,2
+
+
+--Exploring Countries with Highest Infection Rate compared to Population 
+
+  
+SELECT Location, Population, MAX(CAST(Total_Cases as float)) as HighestInfectionCount, (MAX(CAST(Total_Cases as float))/Population)*100 as PercentofPopulationInfected
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%' 
+WHERE Continent IS NOT NULL
+Group By Location, Population
+ORDER BY PercentofPopulationInfected DESC 
+
+
+--Exploring countries with the highest death count
+
+  
+SELECT Location, MAX(CAST(Total_Deaths as float)) as TotalDeathCount
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%' 
+WHERE Continent IS NOT NULL
+GROUP BY Location
+ORDER BY TotalDeathCount DESC 
+
+
+--Exploring continents with the highest death count
+
+
+with MaxByCountry as (
+SELECT Location, Continent, MAX(CAST(Total_Deaths as float)) as TotalDeathCount
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%' 
+WHERE Continent IS NOT NULL AND Location NOT IN (
+'World',
+'High income',
+'Upper middle income',
+'Europe',
+'North America',
+'Asia',
+'South America',
+'Lower middle income',
+'European Union',
+'Africa',
+'Low income',
+'Oceania'
+)
+GROUP BY Location, Continent
+)
+
+SELECT Continent, SUM(TotalDeathCount) as TotalDeathCount
+FROM MaxByCountry
+GROUP BY Continent
+ORDER BY TotalDeathCount DESC
+
+
+--Global Numbers 
+
+SELECT SUM(New_Cases) as Total_Cases, SUM(New_Deaths) as Total_Deaths, (SUM(New_Deaths)/NULLIF(SUM(New_Cases),0))*100 as DeathPercentage
+FROM dbo.CovidDeaths
+--WHERE Location like '%states%'
+WHERE Continent IS NOT NULL
+--GROUP BY Date
+ORDER BY 1,2
+
+
+--Exploring Total Population vs Vaccinations
+
+  
+SELECT dea.Continent, dea.Location, dea.Date, Dea.Population, vac.New_Vaccinations, SUM(CAST(vac.New_Vaccinations as float)) OVER (PARTITION BY dea.Location ORDER BY dea.Location, dea.Date) as RollingVaccinations
+FROM dbo.CovidDeaths dea
+JOIN dbo.CovidVaccinations vac
+ON dea.Location = vac.Location
+AND dea.Date = vac.Date
+WHERE dea.Continent IS NOT NULL
+ORDER BY 2,3
+
+
+--USE CTE to determine percentage of people who received at least one vaccine (regardless of brand) in each country
+
+  
+With PopvsVac (Continent, Location, Date, Population, New_Vaccinations, RollingVaccinations)
+as
+(
+SELECT dea.Continent, dea.Location, dea.Date, dea.Population, vac.New_Vaccinations, SUM(CAST(vac.New_Vaccinations as float)) OVER (PARTITION BY dea.Location ORDER BY dea.Location, dea.Date) as RollingVaccinations
+FROM dbo.CovidDeaths dea
+JOIN dbo.CovidVaccinations vac
+ON dea.Location = vac.Location
+AND dea.Date = vac.Date
+WHERE dea.Continent is not null 
+--ORDER BY By 2,3
+)
+Select *, (RollingVaccinations/Population)*100 as PercentPopVaccinated
+FROM PopvsVac
+ORDER BY 2,3
+
+
+--Creating Views to store data for visualizations 
+
+  
+CREATE VIEW PercentPopulationVaccinated as
+With PopvsVac (Continent, Location, Date, Population, New_Vaccinations, RollingVaccinations)
+as
+(
+SELECT dea.Continent, dea.Location, dea.Date, dea.Population, vac.New_Vaccinations, SUM(CAST(vac.New_Vaccinations as float)) OVER (PARTITION BY dea.Location ORDER BY dea.Location, dea.Date) as RollingVaccinations
+FROM dbo.CovidDeaths dea
+JOIN dbo.CovidVaccinations vac
+On dea.Location = vac.Location
+AND dea.Date = vac.Date
+WHERE dea.Continent is not null 
+--ORDER BY 2,3
+)
+Select *, (RollingVaccinations/Population)*100 as PercentPopVaccinated
+FROM PopvsVac
+--ORDER BY by 2,3
+
+
+CREATE VIEW PercentPopulationInfected as
+SELECT Location, Population, MAX(Total_Cases) as HighestInfectionCount, (MAX(Total_Cases)/Population)*100 as PercentofPopulationInfected
+FROM dbo.CovidDeaths
+--WHERE location like '%states%' 
+WHERE Continent IS NOT NULL
+GROUP BY Location, Population
+--ORDER BY PercentofPopulationInfected DESC
+
